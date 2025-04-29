@@ -4,7 +4,7 @@ const { closePoll } = require('./poll');
 
 module.exports = {
   data: new SlashCommandBuilder()
-    .setName('endvote')
+    .setName('endpoll')
     .setDescription('Đóng poll sớm (dán link hoặc ID tin nhắn poll)')
     .addStringOption(o =>
       o.setName('message').setDescription('Link/ID tin nhắn').setRequired(true)),

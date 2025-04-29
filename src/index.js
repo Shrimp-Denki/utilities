@@ -1,88 +1,80 @@
-const { Client, Collection, Events, GatewayIntentBits } = require('discord.js');
-const fs = require('fs');
-const path = require('path');
-const { table } = require('console');
+// src/index.js
 require('dotenv').config();
 
-// Create client instance
+const {
+  Client,
+  Collection,
+  GatewayIntentBits,
+  Partials,
+  Events,
+} = require('discord.js');
+
+const fs   = require('fs');
+const path = require('path');
+const { table } = require('console');
+
+/*──────────────── Client ─────────────────*/
 const client = new Client({
   intents: [
     GatewayIntentBits.Guilds,
     GatewayIntentBits.GuildMessages,
     GatewayIntentBits.MessageContent,
   ],
+  partials: [Partials.Message], // để edit / fetch message cũ (poll & giveaway)
 });
 
-// Add commands collection to client
+/*──────────────── Load COMMANDS (đệ quy) ─────────────────*/
 client.commands = new Collection();
 
-// Load commands
-const commandsPath = path.join(__dirname, 'commands');
-const commandFiles = fs.readdirSync(commandsPath).filter(file => file.endsWith('.js'));
-
-// Prepare command data for table display
-const commandsData = [];
-
-for (const file of commandFiles) {
-  const filePath = path.join(commandsPath, file);
-  const command = require(filePath);
-  
-  // Set a new item in the Collection with the key as the command name and the value as the exported module
-  if ('data' in command && 'execute' in command) {
-    client.commands.set(command.data.name, command);
-    commandsData.push({
-      Command: command.data.name,
-      Description: command.data.description
-    });
-  } else {
-    console.log(`[WARNING] The command at ${filePath} is missing a required "data" or "execute" property.`);
+function walkCommands(dir) {
+  for (const file of fs.readdirSync(dir)) {
+    const loc = path.join(dir, file);
+    if (fs.statSync(loc).isDirectory()) walkCommands(loc);
+    else if (file.endsWith('.js')) {
+      const cmd = require(loc);
+      if ('data' in cmd && 'execute' in cmd) {
+        client.commands.set(cmd.data.name, cmd);
+        commandsTable.push({
+          Command: '/' + cmd.data.name,
+          Description: cmd.data.description,
+        });
+      } else console.warn(`[WARN] ${loc} thiếu "data" hoặc "execute".`);
+    }
   }
 }
+const commandsTable = [];
+walkCommands(path.join(__dirname, 'commands'));
 
-// Display commands table
 console.log('\n=== COMMANDS LOADED ===');
-if (commandsData.length > 0) {
-  table(commandsData);
-} else {
-  console.log('No commands found.');
-}
+commandsTable.length ? table(commandsTable) : console.log('No commands found.');
 
-// Load events
-const eventsPath = path.join(__dirname, 'events');
-const eventFiles = fs.readdirSync(eventsPath).filter(file => file.endsWith('.js'));
+/*──────────────── Load EVENTS ─────────────────*/
+function walkEvents(dir) {
+  for (const file of fs.readdirSync(dir)) {
+    const loc = path.join(dir, file);
+    if (fs.statSync(loc).isDirectory()) walkEvents(loc);
+    else if (file.endsWith('.js')) {
+      const evt = require(loc);
+      if (!evt || !evt.name || !evt.execute) continue;
+      evt.once
+        ? client.once(evt.name, (...args) => evt.execute(...args))
+        : client.on(evt.name, (...args) => evt.execute(...args));
 
-// Prepare event data for table display
-const eventsData = [];
-
-for (const file of eventFiles) {
-  const filePath = path.join(eventsPath, file);
-  const event = require(filePath);
-  
-  if (event.once) {
-    client.once(event.name, (...args) => event.execute(...args));
-  } else {
-    client.on(event.name, (...args) => event.execute(...args));
+      eventsTable.push({ Event: evt.name, Once: evt.once ? 'Yes' : 'No' });
+    }
   }
-  
-  eventsData.push({
-    Event: event.name,
-    Once: event.once ? 'Yes' : 'No'
-  });
 }
+const eventsTable = [];
+walkEvents(path.join(__dirname, 'events'));
 
-// Display events table
 console.log('\n=== EVENTS LOADED ===');
-if (eventsData.length > 0) {
-  table(eventsData);
-} else {
-  console.log('No events found.');
-}
+eventsTable.length ? table(eventsTable) : console.log('No events found.');
 
-// Login to Discord with your client's token
+/*──────────────── Error handling ───────────────*/
+process.on('unhandledRejection', console.error);
+process.on('uncaughtException',  console.error);
+
+/*──────────────── Login ─────────────────*/
 client.login(process.env.TOKEN)
-  .then(() => {
-    console.log('\n=== BOT ONLINE ===');
-  })
-  .catch(error => {
-    console.error('Failed to login:', error);
-  });
+  .then(() => console.log('\n=== BOT ONLINE ==='))
+  .catch(err => console.error('Login failed:', err));
